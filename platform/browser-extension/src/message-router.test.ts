@@ -52,6 +52,7 @@ const {
   mockHandleBrowserPressKey,
   mockHandleBrowserScroll,
   mockHandleBrowserHoverElement,
+  mockHandleBrowserUploadFile,
   mockHandleBrowserHandleDialog,
   mockHandleBrowserShowNotification,
   mockHandleBrowserInterceptRequests,
@@ -192,6 +193,9 @@ const {
       asyncNoop as (params: Record<string, unknown>, id: string | number) => Promise<void>,
     ),
     mockHandleBrowserHoverElement: vi.fn(
+      asyncNoop as (params: Record<string, unknown>, id: string | number) => Promise<void>,
+    ),
+    mockHandleBrowserUploadFile: vi.fn(
       asyncNoop as (params: Record<string, unknown>, id: string | number) => Promise<void>,
     ),
     mockHandleBrowserHandleDialog: vi.fn(
@@ -386,6 +390,7 @@ vi.mock('./browser-commands/index.js', () => ({
   handleBrowserPressKey: mockHandleBrowserPressKey,
   handleBrowserScroll: mockHandleBrowserScroll,
   handleBrowserHoverElement: mockHandleBrowserHoverElement,
+  handleBrowserUploadFile: mockHandleBrowserUploadFile,
   handleBrowserHandleDialog: mockHandleBrowserHandleDialog,
   handleBrowserShowNotification: mockHandleBrowserShowNotification,
   handleBrowserInterceptRequests: mockHandleBrowserInterceptRequests,
@@ -832,6 +837,7 @@ const resetRoutingMocks = (): void => {
   mockHandleBrowserGetResourceContent.mockReset();
   mockHandleBrowserScroll.mockReset();
   mockHandleBrowserHoverElement.mockReset();
+  mockHandleBrowserUploadFile.mockReset();
   mockHandleBrowserHandleDialog.mockReset();
   mockHandleExtensionGetState.mockReset();
   mockHandleExtensionGetLogs.mockReset();
@@ -878,6 +884,7 @@ describe('handleServerMessage', () => {
     mockHandleBrowserGetResourceContent.mockResolvedValue(undefined);
     mockHandleBrowserScroll.mockResolvedValue(undefined);
     mockHandleBrowserHoverElement.mockResolvedValue(undefined);
+    mockHandleBrowserUploadFile.mockResolvedValue(undefined);
     mockHandleBrowserHandleDialog.mockResolvedValue(undefined);
     mockHandleExtensionGetState.mockResolvedValue(undefined);
     mockHandleExtensionGetLogs.mockResolvedValue(undefined);
@@ -1604,6 +1611,14 @@ describe('handleServerMessage', () => {
 
       expect(mockHandleBrowserHoverElement).toHaveBeenCalledTimes(1);
       expect(mockHandleBrowserHoverElement).toHaveBeenCalledWith({ tabId: 10, selector: '#hover-target' }, 47);
+    });
+
+    test('dispatches browser.uploadFile to handleBrowserUploadFile', () => {
+      const params = { tabId: 10, selector: 'input[type="file"]', filePaths: ['/tmp/photo.png'] };
+      handleServerMessage({ method: 'browser.uploadFile', id: 147, params });
+
+      expect(mockHandleBrowserUploadFile).toHaveBeenCalledTimes(1);
+      expect(mockHandleBrowserUploadFile).toHaveBeenCalledWith(params, 147);
     });
 
     test('dispatches browser.handleDialog to handleBrowserHandleDialog', () => {

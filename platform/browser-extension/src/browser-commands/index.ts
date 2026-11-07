@@ -44,6 +44,7 @@ export {
   handleBrowserQueryElements,
   handleBrowserSelectOption,
   handleBrowserTypeText,
+  handleBrowserUploadFile,
   handleBrowserWaitForElement,
 } from './interaction-commands.js';
 export {

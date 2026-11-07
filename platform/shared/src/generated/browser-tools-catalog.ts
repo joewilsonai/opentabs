@@ -549,6 +549,14 @@ export const BROWSER_TOOLS_CATALOG: readonly BrowserToolMeta[] = [
     group: 'Windows',
   },
   {
+    name: 'browser_upload_file',
+    description:
+      'Set one or more local files on an <input type="file"> element, as if the user had picked them in the file chooser. The page receives the usual input and change events, so upload forms, avatar pickers, and drag-free attachment widgets react normally. The input may be hidden (many sites hide the real input behind a styled button). Provide absolute paths on the machine running the browser. Passing several paths requires the input to have the `multiple` attribute. The selector must match an element in the top-level document (not inside an iframe or shadow root). Chrome only lets extensions attach local files when "Allow access to file URLs" is enabled for the OpenTabs extension in chrome://extensions. This tool only fills the input; submit the form separately if the page needs it.',
+    summary: 'Attach local files to a file input',
+    icon: 'upload',
+    group: 'Page Interaction',
+  },
+  {
     name: 'browser_wait_for_element',
     description:
       'Wait for an element matching the CSS selector to appear in the DOM. Polls the page until the element is found or timeout expires. For SPAs where content loads asynchronously. Set visible=true to also require the element to be visible (not hidden by CSS).',

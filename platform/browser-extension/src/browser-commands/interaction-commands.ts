@@ -411,3 +411,98 @@ export const handleBrowserHandleDialog = async (
     sendErrorResult(id, err);
   }
 };
+
+/**
+ * Sets local files on an `<input type="file">` element via CDP `DOM.setFileInputFiles`.
+ * Chrome dispatches the `input` and `change` events itself, exactly as if the user had
+ * picked the files in the native file chooser.
+ * @param params - Expects `{ tabId: number, selector: string, filePaths: string[] }` with absolute paths.
+ * @returns `{ uploaded: true, tabId, selector, fileCount }`.
+ */
+export const handleBrowserUploadFile = async (params: Record<string, unknown>, id: string | number): Promise<void> => {
+  try {
+    const tabId = requireTabId(params, id);
+    if (tabId === null) return;
+    const selector = requireSelector(params, id);
+    if (selector === null) return;
+    const rawPaths = params.filePaths;
+    if (
+      !Array.isArray(rawPaths) ||
+      rawPaths.length === 0 ||
+      !rawPaths.every((p): p is string => typeof p === 'string' && p.length > 0)
+    ) {
+      sendValidationError(id, 'filePaths must be a non-empty array of file paths');
+      return;
+    }
+    const filePaths: string[] = rawPaths;
+
+    // Chrome rejects DOM.setFileInputFiles from extensions that cannot read local files.
+    const fileAccess = await chrome.extension.isAllowedFileSchemeAccess();
+    if (!fileAccess) {
+      sendErrorResult(
+        id,
+        new Error(
+          'Chrome blocks extensions from attaching local files unless "Allow access to file URLs" is enabled. ' +
+            'Open chrome://extensions, click Details on OpenTabs, and turn on "Allow access to file URLs".',
+        ),
+      );
+      return;
+    }
+
+    await withDebugger(tabId, async () => {
+      await chrome.debugger.sendCommand({ tabId }, 'DOM.enable');
+      try {
+        const docResult = (await chrome.debugger.sendCommand({ tabId }, 'DOM.getDocument', { depth: 0 })) as {
+          root: { nodeId: number };
+        };
+        const queryResult = (await chrome.debugger.sendCommand({ tabId }, 'DOM.querySelector', {
+          nodeId: docResult.root.nodeId,
+          selector,
+        })) as { nodeId: number };
+        if (!queryResult.nodeId) {
+          sendErrorResult(id, new Error(`Element not found: ${selector}`));
+          return;
+        }
+
+        const described = (await chrome.debugger.sendCommand({ tabId }, 'DOM.describeNode', {
+          nodeId: queryResult.nodeId,
+        })) as { node: { nodeName: string; attributes?: string[] } };
+        const attributes = described.node.attributes ?? [];
+        const attr = (name: string): string | undefined => {
+          for (let i = 0; i < attributes.length - 1; i += 2) {
+            if (attributes[i]?.toLowerCase() === name) return attributes[i + 1];
+          }
+          return undefined;
+        };
+        if (described.node.nodeName.toLowerCase() !== 'input' || attr('type')?.toLowerCase() !== 'file') {
+          sendErrorResult(
+            id,
+            new Error(
+              `Element matching ${selector} is not an <input type="file"> (found <${described.node.nodeName.toLowerCase()}>)`,
+            ),
+          );
+          return;
+        }
+        if (filePaths.length > 1 && attr('multiple') === undefined) {
+          sendErrorResult(
+            id,
+            new Error(
+              `The file input matching ${selector} accepts a single file (no "multiple" attribute), but ${filePaths.length} files were given`,
+            ),
+          );
+          return;
+        }
+
+        await chrome.debugger.sendCommand({ tabId }, 'DOM.setFileInputFiles', {
+          files: filePaths,
+          nodeId: queryResult.nodeId,
+        });
+        sendSuccessResult(id, { uploaded: true, tabId, selector, fileCount: filePaths.length });
+      } finally {
+        await chrome.debugger.sendCommand({ tabId }, 'DOM.disable').catch(() => {});
+      }
+    });
+  } catch (err) {
+    sendErrorResult(id, err);
+  }
+};

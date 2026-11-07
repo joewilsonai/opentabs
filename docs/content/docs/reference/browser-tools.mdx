@@ -198,6 +198,10 @@ These are all the browser tools your AI agent gets automatically when OpenTabs i
       <Table.Cell>Dispatch hover events (mouseenter, mouseover, pointermove) to trigger dropdowns, tooltips, and menus.</Table.Cell>
     </Table.Row>
     <Table.Row>
+      <Table.Cell className="font-medium">`browser_upload_file`</Table.Cell>
+      <Table.Cell>Attach local files (absolute paths) to an `<input type="file">`, as if picked in the file chooser. The page receives the normal input and change events. Requires "Allow access to file URLs" for the extension.</Table.Cell>
+    </Table.Row>
+    <Table.Row>
       <Table.Cell className="font-medium">`browser_press_key`</Table.Cell>
       <Table.Cell>Dispatch keyboard events on a page element. Supports modifier keys (shift, ctrl, alt, meta) and standard `KeyboardEvent.key` values like Enter, Escape, Tab, ArrowDown.</Table.Cell>
     </Table.Row>
@@ -629,7 +633,7 @@ These tools control and diagnose the OpenTabs Chrome extension itself. They use 
     </Table.Row>
     <Table.Row>
       <Table.Cell>DOM Interaction</Table.Cell>
-      <Table.Cell>7</Table.Cell>
+      <Table.Cell>8</Table.Cell>
       <Table.Cell>`browser_`</Table.Cell>
     </Table.Row>
     <Table.Row>
@@ -729,7 +733,7 @@ These tools control and diagnose the OpenTabs Chrome extension itself. They use 
     </Table.Row>
     <Table.Row>
       <Table.Cell className="font-medium">Total</Table.Cell>
-      <Table.Cell className="font-medium">76</Table.Cell>
+      <Table.Cell className="font-medium">77</Table.Cell>
       <Table.Cell></Table.Cell>
     </Table.Row>
   </Table.Body>

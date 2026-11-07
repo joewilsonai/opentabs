@@ -83,6 +83,7 @@ import { throttleNetwork } from './throttle-network.js';
 import { typeText } from './type-text.js';
 import { updateTabGroup } from './update-tab-group.js';
 import { updateWindow } from './update-window.js';
+import { uploadFile } from './upload-file.js';
 import { waitForElement } from './wait-for-element.js';
 
 const browserTools: BrowserToolDefinition[] = [
@@ -124,6 +125,7 @@ const browserTools: BrowserToolDefinition[] = [
   pressKey,
   scroll,
   hoverElement,
+  uploadFile,
   handleDialog,
   showNotification,
   interceptRequests,

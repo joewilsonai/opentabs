@@ -22,19 +22,23 @@ vi.mock('../constants.js', () => ({
   POLL_INTERVAL_MS: 100,
   DEFAULT_QUERY_LIMIT: 100,
   TEXT_PREVIEW_MAX_LENGTH: 200,
+  CDP_VERSION: '1.3',
 }));
 
 // Stub chrome.scripting so handler code that reaches past validation doesn't throw
 const mockExecuteScript = vi.fn<(opts: unknown) => Promise<unknown[]>>().mockResolvedValue([]);
+const mockSendCommand = vi.fn<(target: unknown, method: string, params?: unknown) => Promise<unknown>>();
+const mockIsAllowedFileSchemeAccess = vi.fn<() => Promise<boolean>>().mockResolvedValue(true);
 Object.assign(globalThis, {
   chrome: {
     ...((globalThis as Record<string, unknown>).chrome as object),
     runtime: { id: 'test-extension-id' },
+    extension: { isAllowedFileSchemeAccess: mockIsAllowedFileSchemeAccess },
     scripting: { executeScript: mockExecuteScript },
     debugger: {
-      attach: vi.fn(),
-      detach: vi.fn(),
-      sendCommand: vi.fn(),
+      attach: vi.fn().mockResolvedValue(undefined),
+      detach: vi.fn().mockResolvedValue(undefined),
+      sendCommand: mockSendCommand,
       onEvent: { addListener: vi.fn() },
       onDetach: { addListener: vi.fn() },
     },
@@ -54,6 +58,7 @@ const {
   handleBrowserQueryElements,
   handleBrowserHoverElement,
   handleBrowserHandleDialog,
+  handleBrowserUploadFile,
 } = await import('./interaction-commands.js');
 
 /** Extract the first argument from the first call to mockSendToServer */
@@ -375,5 +380,109 @@ describe('handleBrowserHandleDialog', () => {
       id: 'req-63',
       error: { code: -32602, message: "action must be 'accept' or 'dismiss'" },
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleBrowserUploadFile
+// ---------------------------------------------------------------------------
+
+/** Configure CDP responses for a file input described by the given attribute list */
+const mockFileInputNode = (nodeName: string, attributes: string[], nodeId = 42): void => {
+  mockSendCommand.mockImplementation(async (_target, method) => {
+    switch (method) {
+      case 'DOM.getDocument':
+        return { root: { nodeId: 1 } };
+      case 'DOM.querySelector':
+        return { nodeId };
+      case 'DOM.describeNode':
+        return { node: { nodeName, attributes } };
+      default:
+        return {};
+    }
+  });
+};
+
+const sentCdpMethods = (): string[] => mockSendCommand.mock.calls.map(call => call[1]);
+
+describe('handleBrowserUploadFile', () => {
+  beforeEach(() => {
+    mockSendToServer.mockReset();
+    mockSendCommand.mockReset();
+    mockIsAllowedFileSchemeAccess.mockReset();
+    mockIsAllowedFileSchemeAccess.mockResolvedValue(true);
+  });
+
+  test('rejects missing tabId', async () => {
+    await handleBrowserUploadFile({ selector: 'input', filePaths: ['/tmp/a.png'] }, 'req-70');
+    expect(firstSentMessage()).toMatchObject({
+      error: { code: -32602, message: 'Missing or invalid tabId parameter' },
+    });
+  });
+
+  test('rejects missing selector', async () => {
+    await handleBrowserUploadFile({ tabId: 1, filePaths: ['/tmp/a.png'] }, 'req-71');
+    expect(firstSentMessage()).toMatchObject({ error: { code: -32602 } });
+  });
+
+  test('rejects empty or invalid filePaths', async () => {
+    await handleBrowserUploadFile({ tabId: 1, selector: 'input', filePaths: [] }, 'req-72');
+    expect(firstSentMessage()).toMatchObject({
+      error: { code: -32602, message: 'filePaths must be a non-empty array of file paths' },
+    });
+    mockSendToServer.mockReset();
+    await handleBrowserUploadFile({ tabId: 1, selector: 'input', filePaths: [42] }, 'req-73');
+    expect(firstSentMessage()).toMatchObject({ error: { code: -32602 } });
+  });
+
+  test('explains how to enable file access when the extension lacks it', async () => {
+    mockIsAllowedFileSchemeAccess.mockResolvedValue(false);
+    await handleBrowserUploadFile({ tabId: 1, selector: 'input', filePaths: ['/tmp/a.png'] }, 'req-74');
+    const msg = firstSentMessage() as { error: { message: string } };
+    expect(msg.error.message).toContain('Allow access to file URLs');
+    expect(mockSendCommand).not.toHaveBeenCalled();
+  });
+
+  test('sets files on a matching file input via DOM.setFileInputFiles', async () => {
+    mockFileInputNode('INPUT', ['type', 'file', 'name', 'avatar']);
+    await handleBrowserUploadFile({ tabId: 7, selector: '#avatar', filePaths: ['/tmp/a.png'] }, 'req-75');
+    expect(mockSendCommand).toHaveBeenCalledWith({ tabId: 7 }, 'DOM.setFileInputFiles', {
+      files: ['/tmp/a.png'],
+      nodeId: 42,
+    });
+    expect(firstSentMessage()).toMatchObject({
+      id: 'req-75',
+      result: { uploaded: true, tabId: 7, selector: '#avatar', fileCount: 1 },
+    });
+    expect(sentCdpMethods()).toContain('DOM.disable');
+  });
+
+  test('reports when no element matches the selector', async () => {
+    mockFileInputNode('INPUT', ['type', 'file'], 0);
+    await handleBrowserUploadFile({ tabId: 1, selector: '#missing', filePaths: ['/tmp/a.png'] }, 'req-76');
+    const msg = firstSentMessage() as { error: { message: string } };
+    expect(msg.error.message).toContain('Element not found: #missing');
+    expect(sentCdpMethods()).not.toContain('DOM.setFileInputFiles');
+  });
+
+  test('rejects elements that are not file inputs', async () => {
+    mockFileInputNode('INPUT', ['type', 'text']);
+    await handleBrowserUploadFile({ tabId: 1, selector: 'input', filePaths: ['/tmp/a.png'] }, 'req-77');
+    const msg = firstSentMessage() as { error: { message: string } };
+    expect(msg.error.message).toContain('is not an <input type="file">');
+    expect(sentCdpMethods()).not.toContain('DOM.setFileInputFiles');
+  });
+
+  test('rejects several files for a single-file input', async () => {
+    mockFileInputNode('INPUT', ['type', 'file']);
+    await handleBrowserUploadFile({ tabId: 1, selector: 'input', filePaths: ['/tmp/a.png', '/tmp/b.png'] }, 'req-78');
+    const msg = firstSentMessage() as { error: { message: string } };
+    expect(msg.error.message).toContain('accepts a single file');
+  });
+
+  test('accepts several files when the input has the multiple attribute', async () => {
+    mockFileInputNode('INPUT', ['multiple', '', 'type', 'FILE']);
+    await handleBrowserUploadFile({ tabId: 1, selector: 'input', filePaths: ['/tmp/a.png', '/tmp/b.png'] }, 'req-79');
+    expect(firstSentMessage()).toMatchObject({ result: { uploaded: true, fileCount: 2 } });
   });
 });

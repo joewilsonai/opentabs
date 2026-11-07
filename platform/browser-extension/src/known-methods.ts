@@ -48,6 +48,7 @@ export const DISPATCH_METHODS = [
   'browser.pressKey',
   'browser.scroll',
   'browser.hoverElement',
+  'browser.uploadFile',
   'browser.handleDialog',
   'browser.showNotification',
   'browser.interceptRequests',
