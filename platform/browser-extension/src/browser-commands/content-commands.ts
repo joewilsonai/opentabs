@@ -1,4 +1,5 @@
-import { SCREENSHOT_RENDER_DELAY_MS } from '../constants.js';
+import { toErrorMessage } from '@opentabs-dev/shared';
+import { CDP_SCREENSHOT_TIMEOUT_MS, SCREENSHOT_RENDER_DELAY_MS } from '../constants.js';
 import {
   extractScriptResult,
   requireTabId,
@@ -6,6 +7,7 @@ import {
   sendSuccessResult,
   sendValidationError,
 } from './helpers.js';
+import { withDebugger } from './resource-commands.js';
 
 /**
  * Extracts the innerText of a DOM element in a tab's page context.
@@ -153,7 +155,39 @@ export const handleBrowserGetStorage = async (params: Record<string, unknown>, i
 };
 
 /**
- * Captures a PNG screenshot of a tab by focusing it and using chrome.tabs.captureVisibleTab.
+ * Captures the visible area of an already-active tab through the DevTools protocol.
+ * `Page.captureScreenshot` asks the renderer for a fresh frame, so it works when the
+ * window's on-screen surface cannot be read back (occluded or off-screen windows,
+ * another macOS Space, a sleeping display), which is where `captureVisibleTab` fails.
+ */
+const captureViaDebugger = async (tabId: number): Promise<string> =>
+  withDebugger(tabId, async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`Page.captureScreenshot timed out after ${CDP_SCREENSHOT_TIMEOUT_MS}ms`)),
+        CDP_SCREENSHOT_TIMEOUT_MS,
+      );
+    });
+    try {
+      const result = (await Promise.race([
+        chrome.debugger.sendCommand({ tabId }, 'Page.captureScreenshot', { format: 'png' }),
+        timeout,
+      ])) as { data?: unknown } | undefined;
+      if (typeof result?.data !== 'string' || result.data.length === 0) {
+        throw new Error('Page.captureScreenshot returned no image data');
+      }
+      return result.data;
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
+/**
+ * Captures a PNG screenshot of a tab. The tab is activated and its window focused
+ * (restored first if minimized), then captured with chrome.tabs.captureVisibleTab.
+ * When the window surface cannot be read back (Chrome reports "image readback failed"
+ * or a similar capture error), the capture falls back to CDP `Page.captureScreenshot`.
  * @param params - Expects `{ tabId: number }`.
  * @returns `{ image: string }` containing the base64-encoded PNG data.
  */
@@ -169,10 +203,26 @@ export const handleBrowserScreenshotTab = async (
       sendValidationError(id, `Tab ${tabId} not found`);
       return;
     }
-    await chrome.windows.update(tab.windowId, { focused: true });
+    const win = await chrome.windows.get(tab.windowId);
+    await chrome.windows.update(
+      tab.windowId,
+      win.state === 'minimized' ? { state: 'normal', focused: true } : { focused: true },
+    );
     await new Promise(resolve => setTimeout(resolve, SCREENSHOT_RENDER_DELAY_MS));
-    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
-    const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+
+    let base64: string;
+    try {
+      const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+      base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+    } catch (captureErr) {
+      try {
+        base64 = await captureViaDebugger(tabId);
+      } catch (fallbackErr) {
+        throw new Error(
+          `${toErrorMessage(captureErr)} (DevTools capture fallback also failed: ${toErrorMessage(fallbackErr)})`,
+        );
+      }
+    }
     sendSuccessResult(id, { image: base64 });
   } catch (err) {
     sendErrorResult(id, err);

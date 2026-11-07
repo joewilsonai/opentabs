@@ -46,6 +46,8 @@ export const RELOAD_FLUSH_DELAY_MS = 100;
 export const INJECTION_RETRY_DELAY_MS = 200;
 /** Delay (ms) for a tab to render after focus before capturing a screenshot */
 export const SCREENSHOT_RENDER_DELAY_MS = 100;
+/** Upper bound for a CDP Page.captureScreenshot fallback, which waits for the renderer to produce a frame */
+export const CDP_SCREENSHOT_TIMEOUT_MS = 10_000;
 /** Delay (ms) to let the WebSocket response flush before forcing a reconnect */
 export const WS_FLUSH_DELAY_MS = 50;
 /** chrome.storage.local key for the configured MCP server port */

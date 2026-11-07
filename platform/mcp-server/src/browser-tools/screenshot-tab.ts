@@ -12,7 +12,9 @@ const screenshotTab = defineBrowserTool({
   name: 'browser_screenshot_tab',
   description:
     'Capture a screenshot of the visible area of a browser tab as a base64-encoded PNG image. ' +
-    'The tab is automatically focused before capture. By default returns the image as a base64 ' +
+    'The tab is automatically focused before capture (a minimized window is restored). When Chrome cannot ' +
+    'read back the window surface (for example an occluded window or one on another desktop), the capture ' +
+    'falls back to the DevTools protocol. By default returns the image as a base64 ' +
     'string without the data URI prefix. When `filePath` is provided, the PNG bytes are written ' +
     'to that absolute path and a `{savedTo, bytes}` summary is returned instead — useful when ' +
     'the caller needs the screenshot as an on-disk artefact rather than an inline payload.',

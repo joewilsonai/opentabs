@@ -158,7 +158,7 @@ These are all the browser tools your AI agent gets automatically when OpenTabs i
     </Table.Row>
     <Table.Row>
       <Table.Cell className="font-medium">`browser_screenshot_tab`</Table.Cell>
-      <Table.Cell>Capture a screenshot of the visible tab area as a base64-encoded PNG. Auto-focuses the tab before capture.</Table.Cell>
+      <Table.Cell>Capture a screenshot of the visible tab area as a base64-encoded PNG. Auto-focuses the tab before capture. Falls back to a DevTools capture when the window surface cannot be read back.</Table.Cell>
     </Table.Row>
   </Table.Body>
 </Table>
