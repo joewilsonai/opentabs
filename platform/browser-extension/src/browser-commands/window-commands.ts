@@ -72,6 +72,10 @@ export const handleBrowserCreateWindow = async (
       return;
     }
 
+    const tabs = (win.tabs ?? [])
+      .filter((tab): tab is chrome.tabs.Tab & { id: number } => typeof tab.id === 'number')
+      .map(tab => ({ id: tab.id, url: tab.pendingUrl ?? tab.url ?? '', active: tab.active }));
+
     sendSuccessResult(id, {
       id: win.id,
       state: win.state ?? 'normal',
@@ -82,6 +86,8 @@ export const handleBrowserCreateWindow = async (
       height: win.height ?? 0,
       incognito: win.incognito,
       type: win.type ?? 'normal',
+      tabIds: tabs.map(tab => tab.id),
+      tabs,
     });
   } catch (err) {
     sendErrorResult(id, err);

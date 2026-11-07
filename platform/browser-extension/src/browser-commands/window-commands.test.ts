@@ -122,6 +122,32 @@ describe('handleBrowserCreateWindow', () => {
     expect(response).toMatchObject({ jsonrpc: '2.0', result: { id: 5 }, id: 1 });
   });
 
+  test('returns the ids of the tabs created with the window', async () => {
+    mockWindowsCreate.mockResolvedValue(
+      makeWindow({
+        id: 7,
+        tabs: [
+          { id: 70, url: '', pendingUrl: 'https://example.com/', active: true } as chrome.tabs.Tab,
+          { id: undefined, active: false } as chrome.tabs.Tab,
+        ],
+      }),
+    );
+
+    await handleBrowserCreateWindow({ url: 'https://example.com' }, 3);
+
+    expect(getResult()).toMatchObject({
+      result: { id: 7, tabIds: [70], tabs: [{ id: 70, url: 'https://example.com/', active: true }] },
+    });
+  });
+
+  test('returns empty tab lists when Chrome reports no tabs', async () => {
+    mockWindowsCreate.mockResolvedValue(makeWindow({ id: 8 }));
+
+    await handleBrowserCreateWindow({}, 4);
+
+    expect(getResult()).toMatchObject({ result: { id: 8, tabIds: [], tabs: [] } });
+  });
+
   test('creates window with state parameter', async () => {
     mockWindowsCreate.mockResolvedValue(makeWindow({ id: 6, state: 'maximized' }));
 

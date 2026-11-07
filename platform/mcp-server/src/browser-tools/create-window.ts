@@ -11,7 +11,8 @@ const createWindow = defineBrowserTool({
   description:
     'Create a new browser window. Optionally specify a URL to open, size (width/height), position (left/top), ' +
     'window state (normal/minimized/maximized/fullscreen), and incognito mode. ' +
-    "Returns the new window's id, state, bounds, and metadata. " +
+    "Returns the new window's id, state, bounds, and metadata, plus `tabIds` and `tabs` (id, url, active) " +
+    'for the tabs Chrome opened in it, so the new tab can be used with other browser tools right away. ' +
     'Note: Creating incognito windows requires the incognito permission in the extension manifest.',
   summary: 'Create a new browser window',
   icon: 'app-window',
