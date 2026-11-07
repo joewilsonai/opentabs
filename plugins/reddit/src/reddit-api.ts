@@ -99,6 +99,13 @@ const getBearerToken = async (): Promise<string> => {
 };
 
 /**
+ * Error code for a JSON endpoint that Reddit answers with its HTML block page
+ * (HTTP 403) for the current session. Reddit applies this to some listing
+ * endpoints such as search.json while single-item endpoints keep working.
+ */
+const LISTING_BLOCKED = 'LISTING_BLOCKED';
+
+/**
  * Reddit API response wrapper. All .json endpoints return data wrapped in
  * a Listing structure with `kind` and `data` fields.
  */
@@ -149,6 +156,12 @@ const redditGet = async <T>(path: string, params: Record<string, string> = {}): 
   }
 
   if (!response.ok) {
+    if (response.status === 403 && (response.headers.get('content-type') ?? '').includes('text/html')) {
+      throw ToolError.auth(
+        `Reddit blocked ${url.pathname} for this session (HTTP 403 "blocked by network security" page)`,
+        LISTING_BLOCKED,
+      );
+    }
     const errorText = await response.text().catch(() => response.statusText);
     if (response.status === 401 || response.status === 403) {
       throw ToolError.auth(`Reddit API HTTP ${response.status}: ${errorText}`);
@@ -164,6 +177,56 @@ const redditGet = async <T>(path: string, params: Record<string, string> = {}): 
   } catch {
     throw ToolError.internal('Failed to parse Reddit API response');
   }
+};
+
+/**
+ * Fetch a server-rendered www.reddit.com page (or /svc/shreddit partial) with the
+ * user's session and parse it into a Document. Used where Reddit serves a page to
+ * logged-in browsers but blocks the equivalent .json listing endpoint.
+ *
+ * @param path - URL path relative to reddit.com (e.g., '/r/programming/search/')
+ * @param params - Query parameters
+ * @returns Parsed HTML document
+ */
+const redditGetDocument = async (path: string, params: Record<string, string> = {}): Promise<Document> => {
+  const url = new URL(path, 'https://www.reddit.com');
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') {
+      url.searchParams.set(key, value);
+    }
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), {
+      credentials: 'include',
+      headers: { Accept: 'text/html' },
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'TimeoutError') {
+      throw ToolError.timeout('Reddit request timed out after 30000ms');
+    }
+    throw ToolError.internal(`Reddit network error: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  if (response.status === 429) {
+    const reset = response.headers.get('x-ratelimit-reset');
+    const retryMs = reset ? Number.parseInt(reset, 10) * 1000 : undefined;
+    throw ToolError.rateLimited('Reddit rate limited (429)', retryMs);
+  }
+  if (response.status === 401 || response.status === 403) {
+    throw ToolError.auth(`Reddit HTTP ${response.status} for ${url.pathname}`);
+  }
+  if (response.status === 404) {
+    throw ToolError.notFound(`Reddit HTTP 404 for ${url.pathname}`);
+  }
+  if (!response.ok) {
+    throw ToolError.internal(`Reddit HTTP ${response.status} for ${url.pathname}`);
+  }
+
+  const html = await response.text();
+  return new DOMParser().parseFromString(html, 'text/html');
 };
 
 /**
@@ -305,5 +368,14 @@ const clearSessionCache = (): void => {
   bearerTokenExpiry = 0;
 };
 
-export { isAuthenticated, waitForAuth, redditGet, redditPost, redditOAuthPost, clearSessionCache };
 export type { RedditListing };
+export {
+  clearSessionCache,
+  isAuthenticated,
+  LISTING_BLOCKED,
+  redditGet,
+  redditGetDocument,
+  redditOAuthPost,
+  redditPost,
+  waitForAuth,
+};
